@@ -1,0 +1,684 @@
+{
+  "name": "Email Manager",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "filters": {}
+      },
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        -304,
+        -32
+      ],
+      "id": "47ee3585-aa9f-45f0-8220-2df13d67c070",
+      "name": "Gmail Trigger",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "OHfiAU6DBPFVzV50",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a email assitant. You goal is to help manage my inbox and help clear out the clutter and help keep space for important emails. \n\nYou will get the subject, the message ID, and the sender. \nWith this information your task is to determine with if this message is something urgent that I would like to be notified of or if this message is just clutter. \n\nnon-important emails:\nany advertisements for shopping\npromotional matterials\nupdates of from verias subsciptions\n\n\nimport:\ninterview request\nemails from individual people that are non-promotional\nnew-letter type emails\n\n\n\nI would like you to make this determination with a 90% accuracy. So if you are 90% sure that this is important then you note it as important if you are 90% sure this is non-important then categorize it as such. \n\nif you are unable to tell based off the subject and sender you can place this as needing more information. \n\nPlease use your best judgment to determine if this may be an email i would like to keep or would like to be discarged. if you have notes based off your observation please add them as a note. the note fild may be left blank if no further context is needed\n\nyour request for further information will then be passed to a second agent that will then read the full contents of the email along with your notes to make a clerer judgment. of how to process the email. \n\nAlso if you see emails that you belive can be unscubsubscribed or if you feel like this is an email that need some action on my part you can add a note in the recomended action field. \n\n\ni will like you to respond strictly with a JSON Payload:\n\n{\n   message_id: \n   subject: \n   sender: \n   category_id: {1: important, 2:non-important, 3: more info needed}\n   notes: \n   recomended_action: \n}\n\n\nhere is the message data: \n Message ID: {{ $json.id }}\n Sender: {{ $json.From }}\n Subject: {{ $json.Subject }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -96,
+        -32
+      ],
+      "id": "0cc6780f-e868-4f7b-9dd2-2d6f6092adb2",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5.6-luna",
+          "mode": "list",
+          "cachedResultName": "gpt-5.6-luna"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        -96,
+        144
+      ],
+      "id": "78584bc6-dbe2-419d-bfd2-6d41bd25ec23",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "1p9vxbLssc0AQGwt",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Loop over input items and add a new field called 'myNewField' to the JSON of each one\nconst res = $input.first().json.output\n\nconst parsed = JSON.parse(res)\n\nreturn [\n  parsed\n]"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        -32
+      ],
+      "id": "13fadb42-9078-4052-93da-4caa1ec0a6c7",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.category_id }}",
+                    "rightValue": 1,
+                    "operator": {
+                      "type": "number",
+                      "operation": "equals"
+                    },
+                    "id": "2452b3bb-7413-400d-b0f0-af0229e175cf"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "7011d0b9-29d3-4369-a65e-3b9c5555021f",
+                    "leftValue": "={{ $json.category_id }}",
+                    "rightValue": 2,
+                    "operator": {
+                      "type": "number",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "6ee817d4-1c61-4529-8b4f-577841563e82",
+                    "leftValue": "={{ $json.category_id }}",
+                    "rightValue": 3,
+                    "operator": {
+                      "type": "number",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        448,
+        -48
+      ],
+      "id": "6dab3430-7cfc-4d27-ae35-9b8f1f16a4f2",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $json.message_id }}",
+        "labelIds": [
+          "Label_7549093664387919898"
+        ]
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1728,
+        -48
+      ],
+      "id": "4d49932b-5f27-4bc8-9f63-36a6c08770ed",
+      "name": "Mark For Deletion",
+      "webhookId": "ed424a4d-7a4d-434f-901b-4c8f5d69b156",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "OHfiAU6DBPFVzV50",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "removeLabels",
+        "messageId": "={{ $json.id }}",
+        "labelIds": [
+          "INBOX"
+        ]
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1952,
+        -48
+      ],
+      "id": "aa563c61-92b3-4512-baca-dbc77f3394dd",
+      "name": "Remove From Inbox",
+      "webhookId": "ed424a4d-7a4d-434f-901b-4c8f5d69b156",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "OHfiAU6DBPFVzV50",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "8064311521",
+        "text": "=Email Subject: {{ $json.subject }}\n\nEmail: {{ $json.summary }}\n\nRecomended Action: {{ $json.recomended_action }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1952,
+        -384
+      ],
+      "id": "844e27b9-8f80-4c90-a417-e2588138b6a4",
+      "name": "Send a text message",
+      "webhookId": "4dfbddc2-ac92-44f6-8a79-8899de16dbe3",
+      "credentials": {
+        "telegramApi": {
+          "id": "vLvigirtk6SH2tdq",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "messageId": "={{ $json.message_id }}",
+        "simple": false,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        640,
+        256
+      ],
+      "id": "a504829f-6aaa-4f0f-b7bf-76b807444b45",
+      "name": "Get a message",
+      "webhookId": "7d45eedf-c0b2-4e71-9eff-539c9f22c20c",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "OHfiAU6DBPFVzV50",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a email assitant. You goal is to help manage my inbox and help clear out the clutter and help keep space for important emails. \n\nYou will get the subject, the message ID, and the sender. notes recomended_action - This comes from another AI assitant that will be working before you. You will do a more detailed analysis. You will also get the message HTML to be able to make a deeper analysis if this message needs action. \nWith this information your task is to determine with if this message is something urgent that I would like to be notified of or if this message is just clutter. \n\nSome of the main things i am looking fro \n\nif there are email that contain events or good suggestion for things to do please look over the email and if it seems like a good deal then please categorize this email as a category 1 meaning this is something you will want to notify me of. and add a note in the notes section and explain why you are notifying me. \n\nI also am looking for Trading research \nSo this will also be something categorized as a 1 becasue i would like to know about these emails as well. \n\nanything after that i would like you to use your judgment. Just becasue it is not on the list it may still be something you want to notify me of but use your determination:\n\ncurrently i am not looking to move or to buy a hosue \nI am looking for a new job but i get a lot of notification from job website so not all of them neeed to notify me. I am looking for Remote jobs that are IT, IT Auotmation, Or sys admin related. I am looking for 55K+ salary\n\n\nAlso if you see emails that you belive can be unscubsubscribed or if you feel like this is an email that need some action on my part you can add a note in the recomended action field. \n\nFor all emails that you belive need to notify me for please provide a MAX 1 paragraph summary in the summary section\n\ni will like you to respond strictly with a JSON Payload:\n\n{\n   message_id: \n   subject: \n   sender: \n   category_id: {1: notify, 2: mark for deletion}\n   notes: \n   recomended_action:\n   summary: \n}\n\n\nhere is the message data: \n Message ID: {{ $json.id }}\n Sender: {{ $json.headers.from }}\n Subject: {{ $json.headers.subject }}\n Body: {{ $json.text }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        848,
+        256
+      ],
+      "id": "ef6b72bf-29cf-4dd2-90d9-60d425cecda7",
+      "name": "AI Agent1"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5.6-luna",
+          "mode": "list",
+          "cachedResultName": "gpt-5.6-luna"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        848,
+        416
+      ],
+      "id": "4040c6b7-fa5c-445b-ba41-8c70cd64cda9",
+      "name": "OpenAI Chat Model1",
+      "credentials": {
+        "openAiApi": {
+          "id": "1p9vxbLssc0AQGwt",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Loop over input items and add a new field called 'myNewField' to the JSON of each one\nconst res = $input.first().json.output\n\nconst parsed = JSON.parse(res)\n\nreturn [\n  parsed\n]"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1184,
+        256
+      ],
+      "id": "c6fea44e-e76c-4ddb-a0eb-b7465f6c3190",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.category_id }}",
+                    "rightValue": 1,
+                    "operator": {
+                      "type": "number",
+                      "operation": "equals"
+                    },
+                    "id": "469773a9-f6a0-486d-a073-2a0465bace4d"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "e8294a48-7585-40af-b633-c7515241dabd",
+                    "leftValue": "={{ $json.category_id }}",
+                    "rightValue": 2,
+                    "operator": {
+                      "type": "number",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1376,
+        256
+      ],
+      "id": "df9a9780-be47-4327-ab52-b5984cd89ea0",
+      "name": "Switch1"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "messageId": "={{ $json.message_id }}",
+        "simple": false,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        736,
+        -384
+      ],
+      "id": "00123645-d796-4940-a7b0-c74e41f5b498",
+      "name": "Get a message1",
+      "webhookId": "f47615f2-c4ee-4a4e-be92-be5eedc04e96",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "OHfiAU6DBPFVzV50",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=This is an email that may require action on my end. Please provide a summary of the email for me to be able to know what the email is about. \n\nplease keep the sumamry short 1 paragraph max please. \n\nplease make sure your responce is in this exact shape. Only respon with Json\n\nI will like you to respond strictly with a JSON Payload:\n\n{\n   message_id: \n   subject: \n   sender: \n   notes: \n   recomended_action:\n   summary: \n}\n\n\nhere is the message data: \n Message ID: {{ $json.id }}\n Sender: {{ $json.headers.from }}\n Subject: {{ $json.headers.subject }}\n Body: {{ $json.text }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        1056,
+        -384
+      ],
+      "id": "ed989f2c-3e41-4dd4-85e8-d37b2d26b217",
+      "name": "AI Agent2"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5.6-luna",
+          "mode": "list",
+          "cachedResultName": "gpt-5.6-luna"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        1056,
+        -224
+      ],
+      "id": "f86e55a3-df49-45c5-b880-234250a63feb",
+      "name": "OpenAI Chat Model2",
+      "credentials": {
+        "openAiApi": {
+          "id": "1p9vxbLssc0AQGwt",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Loop over input items and add a new field called 'myNewField' to the JSON of each one\nconst res = $input.first().json.output\n\nconst parsed = JSON.parse(res)\n\nreturn [\n  parsed\n]"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1456,
+        -384
+      ],
+      "id": "e7401b6b-9f05-482f-b38f-93eec957e0bc",
+      "name": "Code in JavaScript2"
+    },
+    {
+      "parameters": {
+        "chatId": "8064311521",
+        "text": "=Email Subject: {{ $json.subject }}\n\nEmail: {{ $json.summary }}\n\nRecomended Action: {{ $json.recomended_action }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1952,
+        240
+      ],
+      "id": "64c006b2-e2d8-484b-a536-7eff31c8ffa6",
+      "name": "Send a text message1",
+      "webhookId": "4dfbddc2-ac92-44f6-8a79-8899de16dbe3",
+      "credentials": {
+        "telegramApi": {
+          "id": "vLvigirtk6SH2tdq",
+          "name": "Telegram account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Gmail Trigger": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "Get a message1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark For Deletion",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark For Deletion": {
+      "main": [
+        [
+          {
+            "node": "Remove From Inbox",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get a message": {
+      "main": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Switch1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch1": {
+      "main": [
+        [
+          {
+            "node": "Send a text message1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark For Deletion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get a message1": {
+      "main": [
+        [
+          {
+            "node": "AI Agent2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model2": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent2",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent2": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript2": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "101d6124-abfb-46cd-bbb1-0859b9d88b1b",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "87e0ce283de1c611b379bb27fb5af4d8efe5dd6d7b9def4650dc734c29ef3988"
+  },
+  "nodeGroups": [],
+  "id": "NAD22Fxs16oQFPxF",
+  "tags": [
+    {
+      "updatedAt": "2026-10-10T18:36:02.015Z",
+      "createdAt": "2026-10-10T18:36:02.015Z",
+      "id": "i4Fa42p9fFsH4e4y",
+      "name": "v1.0.0"
+    }
+  ]
+}

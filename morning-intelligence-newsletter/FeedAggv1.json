@@ -1,0 +1,1263 @@
+{
+  "name": "Tech Feed Agg",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -592,
+        336
+      ],
+      "id": "c69edaaf-09be-45f5-80bc-f92e7a312646",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "url": "https://rss.arxiv.org/rss/q-fin.TR+cs.AI+math.AP+math.IT+math.FA+math.PR+math.OC+math.DS+q-fin.PM+q-fin.MF",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        -16,
+        -416
+      ],
+      "id": "3b19374e-0506-441f-a129-2461b255b36a",
+      "name": "ArXiv Feed"
+    },
+    {
+      "parameters": {
+        "fieldsToAggregate": {
+          "fieldToAggregate": [
+            {
+              "fieldToAggregate": "title"
+            },
+            {
+              "fieldToAggregate": "link"
+            },
+            {
+              "fieldToAggregate": "pubDate"
+            },
+            {
+              "fieldToAggregate": "creator"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        416,
+        -240
+      ],
+      "id": "fb061518-fe97-4aed-9569-fc7d7dd15dba",
+      "name": "Aggregate"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You curate my weekly academic research feed.\n\nInput contains arXiv paper titles, publication dates, and links only.\n\nMy interests:\n- Quant trading, market microstructure, order flow, price formation\n- Financial time series and stochastic processes\n- Mathematical finance\n- Optimal execution and optimal stopping\n- Portfolio construction and risk\n- ML for markets\n- AI agents, reasoning, planning, memory, and tool use\n- AI architectures, training, and inference\n- Probability, optimization, information theory, and dynamical systems relevant to AI or finance\n\nGoal:\nSelect a small, high-value reading list worth my time.\n\nPrioritize papers that appear:\n- Novel or foundational\n- Relevant to my research interests\n- Capable of generating testable ideas\n- Useful for quantitative research, AI systems, or engineering\n- Likely to teach an important concept or method\n\nDownrank:\n- Narrow incremental work\n- Duplicate topics\n- Papers with little obvious relevance to my interests\n- Trendy titles without clear research value\n\nBecause you only receive titles, dates, and links:\n- Never invent results, methods, datasets, authors, or conclusions.\n- Describe relevance only as an inference from the title.\n- Preserve every input link exactly.\n\nSelect:\n- Up to 5 \"core\" papers\n- Up to 3 \"stretch\" papers\n- Up to 5 \"watchlist\" papers\n- Fewer is acceptable if quality is low.\n- Exactly one selected paper may have best_first_read=true.\n- Prefer a core paper for best_first_read.\n\nReturn ONLY valid JSON.\n\nUse exactly this structure:\n\n{\n  \"category\": \"research\",\n  \"stories\": [\n    {\n      \"title\": \"string\",\n      \"link\": \"string\",\n      \"published\": \"string\",\n      \"priority\": 1,\n      \"research_tier\": \"core\",\n      \"area\": \"string\",\n      \"summary\": \"string\",\n      \"look_for\": [\n        \"string\",\n        \"string\"\n      ],\n      \"best_first_read\": false\n    }\n  ]\n}\n\nRules:\n- research_tier must be \"core\", \"stretch\", or \"watchlist\".\n- priority must be an integer from 1 to 10.\n- summary should briefly explain why the paper appears worth reading.\n- look_for must contain 1 or 2 short questions for core/stretch papers.\n- For watchlist papers, look_for may be [].\n- Exactly one paper should have best_first_read=true when at least one core paper exists.\n- Sort core first, then stretch, then watchlist; within each tier sort by priority descending.\n- Do not include rejected papers.\n- Do not add extra keys.\n- Do not escape underscores.\n- No markdown.\n- No code fences.\n- No commentary outside the JSON.\n- Output must parse directly with JSON.parse().\n\nPAPER DATA:\n\nTitle: {{ $json.title }}\nPublished: {{ $json.pubDate }}\nLink: {{ $json.link }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        816,
+        -256
+      ],
+      "id": "3f49db9c-0e18-472d-8088-47fa5ed2bb51",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5.6-luna",
+          "mode": "list",
+          "cachedResultName": "gpt-5.6-luna"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        800,
+        -96
+      ],
+      "id": "4005ad56-d407-4fc1-bcb8-682b833f8ef9",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "1p9vxbLssc0AQGwt",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const inputItems = $input.all();\nconst output = [];\n\nfunction cleanLink(link = \"\") {\n  if (!link) return \"\";\n\n  const value = String(link).trim();\n\n  // Convert markdown links like:\n  // [https://site.com](https://site.com)\n  // into:\n  // https://site.com\n  const match = value.match(/\\[[^\\]]*\\]\\((https?:\\/\\/[^)]+)\\)/);\n\n  return match ? match[1] : value;\n}\n\nfunction parseResponse(raw) {\n  if (typeof raw === \"object\" && raw !== null) {\n    return raw;\n  }\n\n  let text = String(raw ?? \"\").trim();\n\n  text = text\n    .replace(/^```json\\s*/i, \"\")\n    .replace(/^```\\s*/i, \"\")\n    .replace(/\\s*```$/, \"\")\n    .replace(/\\\\_/g, \"_\")\n    .trim();\n\n  let parsed = JSON.parse(text);\n\n  // Handle double-encoded JSON\n  if (typeof parsed === \"string\") {\n    parsed = JSON.parse(parsed);\n  }\n\n  return parsed;\n}\n\nfor (const item of inputItems) {\n  const raw =\n    item.json.output ??\n    item.json.text ??\n    item.json.response ??\n    item.json.content ??\n    item.json.message ??\n    item.json;\n\n  const data = parseResponse(raw);\n\n  const category = data.category ?? \"unknown\";\n\n  for (const story of data.stories ?? []) {\n    output.push({\n      json: {\n        category,\n\n        title: story.title ?? \"\",\n        link: cleanLink(story.link),\n        published: story.published ?? \"\",\n\n        priority:\n          typeof story.priority === \"number\"\n            ? story.priority\n            : null,\n\n        area: story.area ?? \"\",\n        topic: story.topic ?? \"\",\n        type: story.type ?? \"\",\n\n        summary: story.summary ?? \"\",\n\n        why_it_matters:\n          story.why_it_matters ?? \"\",\n\n        research_question:\n          story.research_question ?? null,\n\n        research_tier:\n          story.research_tier ?? null,\n\n        look_for:\n          Array.isArray(story.look_for)\n            ? story.look_for\n            : [],\n\n        best_first_read:\n          story.best_first_read === true\n      }\n    });\n  }\n}\n\n// Optional: sort highest priority first\noutput.sort((a, b) => {\n  return (b.json.priority ?? 0) - (a.json.priority ?? 0);\n});\n\nreturn output;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1184,
+        -224
+      ],
+      "id": "39c9060d-144d-4949-be00-c20235a669b9",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all().map(item => item.json);\n\n// =====================================================\n// HELPERS\n// =====================================================\n\nfunction escapeHtml(value = \"\") {\n  return String(value)\n    .replace(/&/g, \"&amp;\")\n    .replace(/</g, \"&lt;\")\n    .replace(/>/g, \"&gt;\")\n    .replace(/\"/g, \"&quot;\")\n    .replace(/'/g, \"&#039;\");\n}\n\nfunction cleanLink(link = \"\") {\n  if (!link) return \"\";\n\n  const value = String(link).trim();\n\n  const match = value.match(\n    /\\[[^\\]]*\\]\\((https?:\\/\\/[^)]+)\\)/\n  );\n\n  return match ? match[1] : value;\n}\n\nfunction storyCard(item) {\n  const link = cleanLink(item.link);\n\n  const metadata = [];\n\n  if (item.priority !== null && item.priority !== undefined) {\n    metadata.push(\n      `<strong>Priority:</strong> ${escapeHtml(item.priority)}/10`\n    );\n  }\n\n  if (item.area) {\n    metadata.push(\n      `<strong>Area:</strong> ${escapeHtml(item.area)}`\n    );\n  }\n\n  if (item.topic) {\n    metadata.push(\n      `<strong>Topic:</strong> ${escapeHtml(item.topic)}`\n    );\n  }\n\n  if (item.type) {\n    metadata.push(\n      `<strong>Type:</strong> ${escapeHtml(item.type)}`\n    );\n  }\n\n  if (item.research_tier) {\n    metadata.push(\n      `<strong>Tier:</strong> ${escapeHtml(item.research_tier)}`\n    );\n  }\n\n  const lookFor =\n    Array.isArray(item.look_for) && item.look_for.length\n      ? `\n        <div style=\"margin-top:12px;\">\n          <strong>🔎 Look for:</strong>\n          <ul style=\"margin-top:6px;\">\n            ${item.look_for\n              .map(q => `<li>${escapeHtml(q)}</li>`)\n              .join(\"\")}\n          </ul>\n        </div>\n      `\n      : \"\";\n\n  const researchQuestion =\n    item.research_question\n      ? `\n        <div style=\"margin-top:10px;\">\n          <strong>🧪 Research idea:</strong>\n          ${escapeHtml(item.research_question)}\n        </div>\n      `\n      : \"\";\n\n  const whyItMatters =\n    item.why_it_matters &&\n    item.why_it_matters !== item.summary\n      ? `\n        <div style=\"margin-top:10px;\">\n          <strong>💡 Why it matters:</strong>\n          ${escapeHtml(item.why_it_matters)}\n        </div>\n      `\n      : \"\";\n\n  const bestRead =\n    item.best_first_read\n      ? `\n        <div style=\"\n          font-weight:bold;\n          margin-bottom:8px;\n        \">\n          ⭐ RECOMMENDED FIRST READ\n        </div>\n      `\n      : \"\";\n\n  return `\n    <div style=\"\n      padding:18px 0;\n      border-bottom:1px solid #e5e5e5;\n    \">\n\n      ${bestRead}\n\n      <div style=\"\n        font-size:18px;\n        font-weight:bold;\n        line-height:1.35;\n      \">\n        ${\n          link\n            ? `\n              <a\n                href=\"${escapeHtml(link)}\"\n                style=\"\n                  color:#111827;\n                  text-decoration:none;\n                \"\n              >\n                ${escapeHtml(item.title)}\n              </a>\n            `\n            : escapeHtml(item.title)\n        }\n      </div>\n\n      ${\n        item.published\n          ? `\n            <div style=\"\n              font-size:12px;\n              color:#6b7280;\n              margin-top:5px;\n            \">\n              ${escapeHtml(item.published)}\n            </div>\n          `\n          : \"\"\n      }\n\n      ${\n        metadata.length\n          ? `\n            <div style=\"\n              margin-top:7px;\n              font-size:13px;\n            \">\n              ${metadata.join(\" &nbsp;•&nbsp; \")}\n            </div>\n          `\n          : \"\"\n      }\n\n      ${\n        item.summary\n          ? `\n            <p style=\"\n              margin:10px 0 0 0;\n              line-height:1.55;\n            \">\n              ${escapeHtml(item.summary)}\n            </p>\n          `\n          : \"\"\n      }\n\n      ${whyItMatters}\n\n      ${lookFor}\n\n      ${researchQuestion}\n\n      ${\n        link\n          ? `\n            <div style=\"margin-top:12px;\">\n              <a href=\"${escapeHtml(link)}\">\n                Read more →\n              </a>\n            </div>\n          `\n          : \"\"\n      }\n\n    </div>\n  `;\n}\n\nfunction createSection(title, sectionItems, subtitle = \"\") {\n  if (!sectionItems.length) return \"\";\n\n  return `\n    <div style=\"margin-top:38px;\">\n\n      <h2 style=\"\n        margin:0 0 5px 0;\n        font-size:22px;\n      \">\n        ${title}\n      </h2>\n\n      ${\n        subtitle\n          ? `\n            <div style=\"\n              color:#6b7280;\n              font-size:14px;\n              margin-bottom:8px;\n            \">\n              ${escapeHtml(subtitle)}\n            </div>\n          `\n          : \"\"\n      }\n\n      ${sectionItems.map(storyCard).join(\"\")}\n\n    </div>\n  `;\n}\n\n// =====================================================\n// DEDUPLICATE\n// =====================================================\n\nconst seen = new Set();\nconst uniqueItems = [];\n\nfor (const item of items) {\n  const link = cleanLink(item.link);\n\n  const key = link\n    ? link.toLowerCase()\n    : String(item.title || \"\").toLowerCase();\n\n  if (!key || seen.has(key)) continue;\n\n  seen.add(key);\n\n  uniqueItems.push({\n    ...item,\n    link\n  });\n}\n\n// =====================================================\n// SORT\n// =====================================================\n\nuniqueItems.sort(\n  (a, b) =>\n    (b.priority ?? 0) -\n    (a.priority ?? 0)\n);\n\n// =====================================================\n// GROUPS\n// =====================================================\n\nconst ai = uniqueItems.filter(\n  x => x.category === \"ai\"\n);\n\nconst engineering = uniqueItems.filter(\n  x => x.category === \"engineering\"\n);\n\nconst securityAutomation = uniqueItems.filter(\n  x => x.category === \"security_automation\"\n);\n\nconst markets = uniqueItems.filter(\n  x => x.category === \"markets\"\n);\n\nconst research = uniqueItems.filter(\n  x => x.category === \"research\"\n);\n\nconst researchCore = research.filter(\n  x => x.research_tier === \"core\"\n);\n\nconst researchStretch = research.filter(\n  x => x.research_tier === \"stretch\"\n);\n\nconst researchWatch = research.filter(\n  x => x.research_tier === \"watchlist\"\n);\n\n// =====================================================\n// BIG 3\n// =====================================================\n\nconst newsItems = uniqueItems.filter(\n  x => x.category !== \"research\"\n);\n\nconst bigThree = [...newsItems]\n  .sort(\n    (a, b) =>\n      (b.priority ?? 0) -\n      (a.priority ?? 0)\n  )\n  .slice(0, 3);\n\n// =====================================================\n// COUNTS\n// =====================================================\n\nconst newsCount = newsItems.length;\nconst researchCount = research.length;\n\n// =====================================================\n// DATE\n// =====================================================\n\nconst today = new Date().toLocaleDateString(\n  \"en-US\",\n  {\n    weekday: \"long\",\n    month: \"long\",\n    day: \"numeric\",\n    year: \"numeric\"\n  }\n);\n\n// =====================================================\n// BIG 3 HTML\n// =====================================================\n\nconst bigThreeHtml = bigThree.length\n  ? `\n    <div style=\"\n      margin-top:28px;\n      padding:20px;\n      border:1px solid #d1d5db;\n      border-radius:10px;\n      background:#f9fafb;\n    \">\n\n      <h2 style=\"margin-top:0;\">\n        🚨 The Big 3\n      </h2>\n\n      <p>\n        If you only have five minutes this morning,\n        start here.\n      </p>\n\n      ${bigThree.map(storyCard).join(\"\")}\n\n    </div>\n  `\n  : \"\";\n\n// =====================================================\n// HTML\n// =====================================================\n\nconst html = `\n<!DOCTYPE html>\n<html>\n\n<body style=\"\n  margin:0;\n  padding:0;\n  background:#ffffff;\n  color:#111827;\n  font-family:Arial, Helvetica, sans-serif;\n\">\n\n<div style=\"\n  max-width:760px;\n  margin:auto;\n  padding:30px 20px;\n\">\n\n  <h1 style=\"\n    margin-bottom:4px;\n    font-size:30px;\n  \">\n    ☀️ Morning Intelligence\n  </h1>\n\n  <div style=\"\n    font-size:14px;\n    color:#6b7280;\n    margin-bottom:22px;\n  \">\n    ${today}\n  </div>\n\n  <p style=\"\n    font-size:17px;\n    line-height:1.6;\n  \">\n    Morning 👋 Your agents scanned the noise and pulled\n    <strong>${newsCount} tech/news signals</strong>\n    and\n    <strong>${researchCount} research papers</strong>\n    worth keeping on your radar today.\n  </p>\n\n  ${bigThreeHtml}\n\n  ${createSection(\n    \"🤖 AI Radar\",\n    ai,\n    \"Models, agents, reasoning, memory, tooling and frontier AI.\"\n  )}\n\n  ${createSection(\n    \"💻 Builder Desk\",\n    engineering,\n    \"AI coding, developer tools, cloud infrastructure and engineering.\"\n  )}\n\n  ${createSection(\n    \"🛡️ Security & Automation\",\n    securityAutomation,\n    \"Cybersecurity, offensive research and production automation.\"\n  )}\n\n  ${createSection(\n    \"📈 Market Desk\",\n    markets,\n    \"Quant research, market structure and discretionary trading.\"\n  )}\n\n  ${createSection(\n    \"🔬 Core Research\",\n    researchCore,\n    \"The papers most worth your time.\"\n  )}\n\n  ${createSection(\n    \"🧠 Research Stretch Reads\",\n    researchStretch,\n    \"More technical or exploratory papers.\"\n  )}\n\n  ${createSection(\n    \"👀 Research Watchlist\",\n    researchWatch,\n    \"Interesting ideas worth keeping on the radar.\"\n  )}\n\n  <div style=\"\n    margin-top:45px;\n    padding-top:20px;\n    border-top:1px solid #d1d5db;\n    line-height:1.6;\n  \">\n\n    <strong>\n      🎯 Today's objective\n    </strong>\n\n    <br><br>\n\n    Know what changed.\n\n    <br>\n\n    Pick one thing worth understanding deeply.\n\n    <br>\n\n    Follow anything that sparks a build,\n    research or trading idea.\n\n  </div>\n\n</div>\n\n</body>\n</html>\n`;\n\n// =====================================================\n// OUTPUT ONE ITEM\n// =====================================================\n\nreturn [\n  {\n    json: {\n      subject: `☀️ Morning Intelligence — ${today}`,\n      html,\n\n      stats: {\n        total_items: uniqueItems.length,\n        news: newsCount,\n        research: researchCount,\n\n        ai: ai.length,\n        engineering: engineering.length,\n        security_automation: securityAutomation.length,\n        markets: markets.length,\n\n        research_core: researchCore.length,\n        research_stretch: researchStretch.length,\n        research_watchlist: researchWatch.length\n      }\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2160,
+        368
+      ],
+      "id": "42958683-05d6-402c-9661-643638223b53",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "sendTo": "dakotahtorres.dt@gmail.com",
+        "subject": "={{ $json.subject }}",
+        "message": "={{ $json.html }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        2464,
+        368
+      ],
+      "id": "b7445ebe-217c-4074-81bb-450b53b73686",
+      "name": "Send a message",
+      "webhookId": "3af8ce18-2be6-4e19-b273-6089f35707cf",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "OHfiAU6DBPFVzV50",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://huggingface.co/blog/feed.xml",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        -32,
+        -208
+      ],
+      "id": "6e4a1fc0-044f-4b7c-9beb-31d3b652a7aa",
+      "name": "Hugging Face Blog"
+    },
+    {
+      "parameters": {
+        "url": "https://cdn.jsdelivr.net/gh/Hyraze/trending-collection@main/api/daily/all.xml?utm_source=chatgpt.com",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        -32,
+        272
+      ],
+      "id": "83210b4f-bc3a-407b-8371-1430ff0a926d",
+      "name": "GitHub Trending"
+    },
+    {
+      "parameters": {
+        "url": "https://openai.com/news/rss.xml",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        -32,
+        -48
+      ],
+      "id": "eede8d10-7fca-437d-bb52-effe81c67210",
+      "name": "Open AI RSS"
+    },
+    {
+      "parameters": {
+        "url": "https://aws.amazon.com/blogs/architecture/feed/",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        -32,
+        432
+      ],
+      "id": "9d1cb080-99dd-4ccd-a5ff-1d706c5d55e6",
+      "name": "AWS"
+    },
+    {
+      "parameters": {
+        "url": "https://antigravity.google/blog/rss.xml",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        -32,
+        112
+      ],
+      "id": "4c5148e1-36b4-472f-b546-17dafead25aa",
+      "name": "Google Coding AI Reserch"
+    },
+    {
+      "parameters": {
+        "url": "https://portswigger.net/research/rss",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        -32,
+        720
+      ],
+      "id": "bd87da51-8232-4e8e-98ad-a6b195c49f5e",
+      "name": "PortSwigger Research"
+    },
+    {
+      "parameters": {
+        "url": "https://blog.n8n.io/rss/",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        -32,
+        576
+      ],
+      "id": "07a6587c-72b8-4b78-8470-65b7298d61de",
+      "name": "N8N Blog"
+    },
+    {
+      "parameters": {
+        "url": "https://trailofbits.com/rss.xml",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        -32,
+        880
+      ],
+      "id": "5effe03b-6cc5-455f-9add-bffb15c595d6",
+      "name": "Trail of Bits"
+    },
+    {
+      "parameters": {
+        "url": "https://quantpedia.com/feed/",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        -64,
+        1216
+      ],
+      "id": "4210cfa6-9402-4c3f-8059-d190244b9d49",
+      "name": "Quantopidia"
+    },
+    {
+      "parameters": {
+        "url": "https://alphaarchitect.com/feed/",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        -64,
+        1056
+      ],
+      "id": "6bf5c7a2-baba-44df-87dc-591be16033b8",
+      "name": "Alpha Architect"
+    },
+    {
+      "parameters": {
+        "numberInputs": 3
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        432,
+        96
+      ],
+      "id": "5255f87d-5348-4ab2-a0ba-e857b7f4df57",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "numberInputs": 3
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        448,
+        384
+      ],
+      "id": "bbe09e70-7f9a-4474-97fa-66def32d5653",
+      "name": "Merge1"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        400,
+        624
+      ],
+      "id": "d8e9e4eb-6634-4d7c-aaaf-d65098b9b43a",
+      "name": "Merge2"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        400,
+        976
+      ],
+      "id": "3be65dbf-bb9f-4e54-9b24-439de4e938af",
+      "name": "Merge3"
+    },
+    {
+      "parameters": {
+        "fieldsToAggregate": {
+          "fieldToAggregate": [
+            {
+              "fieldToAggregate": "title"
+            },
+            {
+              "fieldToAggregate": "link"
+            },
+            {
+              "fieldToAggregate": "pubDate"
+            },
+            {
+              "fieldToAggregate": "author"
+            },
+            {
+              "fieldToAggregate": "creator"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        640,
+        96
+      ],
+      "id": "e50de4b1-fdf8-4086-a5cd-c422aa77607d",
+      "name": "Aggregate1"
+    },
+    {
+      "parameters": {
+        "fieldsToAggregate": {
+          "fieldToAggregate": [
+            {
+              "fieldToAggregate": "title"
+            },
+            {
+              "fieldToAggregate": "link"
+            },
+            {
+              "fieldToAggregate": "pubDate"
+            },
+            {
+              "fieldToAggregate": "author"
+            },
+            {
+              "fieldToAggregate": "creator"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        672,
+        384
+      ],
+      "id": "7b09722a-d61e-485b-aba5-d865ba8da56b",
+      "name": "Aggregate2"
+    },
+    {
+      "parameters": {
+        "fieldsToAggregate": {
+          "fieldToAggregate": [
+            {
+              "fieldToAggregate": "title"
+            },
+            {
+              "fieldToAggregate": "link"
+            },
+            {
+              "fieldToAggregate": "pubDate"
+            },
+            {
+              "fieldToAggregate": "author"
+            },
+            {
+              "fieldToAggregate": "creator"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        640,
+        640
+      ],
+      "id": "adb6506d-c5ed-4fc1-8022-52e5c7ded262",
+      "name": "Aggregate3"
+    },
+    {
+      "parameters": {
+        "fieldsToAggregate": {
+          "fieldToAggregate": [
+            {
+              "fieldToAggregate": "title"
+            },
+            {
+              "fieldToAggregate": "link"
+            },
+            {
+              "fieldToAggregate": "pubDate"
+            },
+            {
+              "fieldToAggregate": "author"
+            },
+            {
+              "fieldToAggregate": "creator"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        608,
+        976
+      ],
+      "id": "0ad439d4-eb78-4e2e-ba4c-c2190d99e72f",
+      "name": "Aggregate4"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You curate my daily AI intelligence feed.\n\nInput contains RSS items from AI/model/research sources.\n\nMy interests:\n- Frontier AI capabilities\n- LLMs and reasoning\n- AI agents\n- Memory, planning and tool use\n- Coding agents\n- Model architectures\n- Training and inference advances\n- Open-source models\n- Agent frameworks and protocols\n- AI automation\n- Developments likely to change software engineering\n\nSelect only the most important items for today.\n\nPrioritize:\n1. New capabilities or model releases\n2. Important agent/coding developments\n3. New architectures, training or inference methods\n4. Tools/frameworks I could practically use\n5. Developments likely to matter over the next 6-12 months\n\nDownrank:\n- Marketing\n- Partnerships\n- Minor product updates\n- Repetitive announcements\n- Corporate news without technical significance\n\nDo not invent information not present in the input.\n\nReturn ONLY valid JSON:\n\n{\n  \"category\": \"ai\",\n  \"stories\": [\n    {\n      \"title\": \"string\",\n      \"link\": \"string\",\n      \"published\": \"string\",\n      \"priority\": 1,\n      \"summary\": \"1-2 concise sentences\",\n      \"why_it_matters\": \"1 concise sentence\"\n    }\n  ]\n}\n\nRules:\n- Maximum 5 stories.\n- priority is integer 1-10.\n- Preserve input links exactly.\n- Sort highest priority first.\n- Fewer than 5 is fine.\n- No markdown or text outside JSON.\n\n\nHere is the Data:\n{{ $json.title }}\n{{ $json.link }}\n{{ $json.pubDate }}\n{{ $json.author }}\n{{ $json.creator }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        832,
+        80
+      ],
+      "id": "fada4651-a335-40ba-b8f2-a33340e767da",
+      "name": "AI Agent1"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5.6-luna",
+          "mode": "list",
+          "cachedResultName": "gpt-5.6-luna"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        800,
+        240
+      ],
+      "id": "b41e5250-2ac7-461b-a0d5-0738ee6845d5",
+      "name": "OpenAI Chat Model1",
+      "credentials": {
+        "openAiApi": {
+          "id": "1p9vxbLssc0AQGwt",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You curate my daily software engineering and developer technology feed.\n\nInput contains GitHub Trending, cloud, infrastructure and developer-tool items.\n\nMy interests:\n- AI coding agents\n- Developer automation\n- Software architecture\n- Cloud infrastructure\n- APIs and integration platforms\n- DevOps\n- Databases\n- Distributed systems\n- Rust, Python and TypeScript\n- Agent frameworks\n- Developer productivity\n- Observability\n- New tools gaining developer adoption\n\nFor GitHub projects, prioritize repositories that appear genuinely useful, technically interesting, rapidly emerging, or relevant to AI/automation/software engineering.\n\nFor cloud news, prioritize architectural or capability changes rather than minor service announcements.\n\nSelect items that could:\n- Change how developers work\n- Teach me a useful engineering concept\n- Introduce a tool worth experimenting with\n- Matter to an AI/automation engineer\n- Influence systems I may build\n\nDownrank:\n- Minor version bumps\n- Cosmetic releases\n- Generic corporate announcements\n- Narrow tools with no obvious relevance\n\nDo not invent details not contained in the input.\n\nReturn ONLY valid JSON:\n\n{\n  \"category\": \"engineering\",\n  \"stories\": [\n    {\n      \"title\": \"string\",\n      \"link\": \"string\",\n      \"published\": \"string\",\n      \"priority\": 1,\n      \"summary\": \"1-2 concise sentences\",\n      \"why_it_matters\": \"1 concise sentence\"\n    }\n  ]\n}\n\nRules:\n- Maximum 5 stories.\n- priority is integer 1-10.\n- Preserve links exactly.\n- Sort highest priority first.\n- Fewer than 5 is acceptable.\n- No markdown or text outside JSON.\n\n\nHere is the Data:\n{{ $json.title }}\n{{ $json.link }}\n{{ $json.pubDate }}\n{{ $json.author }}\n{{ $json.creator }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        896,
+        336
+      ],
+      "id": "42b799e3-68f6-4883-86ba-fb7b85c33b63",
+      "name": "AI Agent2"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5.6-luna",
+          "mode": "list",
+          "cachedResultName": "gpt-5.6-luna"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        864,
+        544
+      ],
+      "id": "3bf8f039-776e-4798-bb89-0f06e91f3d7b",
+      "name": "OpenAI Chat Model2",
+      "credentials": {
+        "openAiApi": {
+          "id": "1p9vxbLssc0AQGwt",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You curate my daily cybersecurity and automation intelligence feed.\n\nInput may contain offensive-security research, security engineering, vulnerability research, and automation-platform news.\n\nMy interests include:\n\nSECURITY\n- Offensive security\n- Vulnerability research\n- Exploitation techniques\n- New vulnerability classes\n- Web security\n- Red-team tradecraft\n- Identity and cloud attacks\n- Malware techniques\n- Fuzzing and program analysis\n- AI-assisted security research\n- Important defensive lessons from offensive research\n\nAUTOMATION\n- n8n and workflow automation\n- AI agents in workflows\n- Enterprise automation\n- Human-in-the-loop systems\n- Agent orchestration\n- Reliability and observability\n- Production AI workflows\n- Useful integrations\n\nPrioritize security research that introduces a technique, vulnerability class, exploitation mechanism, or meaningful defensive insight.\n\nPrioritize automation developments that meaningfully expand what can be automated or improve production AI systems.\n\nDownrank:\n- Generic breach news\n- Routine CVE announcements without interesting technical detail\n- Vendor marketing\n- Minor product changes\n\nDo not invent attack details, vulnerabilities or findings not contained in the input.\n\nReturn ONLY valid JSON:\n\n{\n  \"category\": \"security_automation\",\n  \"stories\": [\n    {\n      \"title\": \"string\",\n      \"link\": \"string\",\n      \"published\": \"string\",\n      \"priority\": 1,\n      \"topic\": \"security OR automation\",\n      \"summary\": \"1-2 concise sentences\",\n      \"why_it_matters\": \"1 concise sentence\"\n    }\n  ]\n}\n\nRules:\n- Maximum 5 stories.\n- priority is integer 1-10.\n- Preserve links exactly.\n- Sort highest priority first.\n- Favor technical depth over popularity.\n- No markdown or text outside JSON.\n\n\nHere is the Data:\n{{ $json.title }}\n{{ $json.link }}\n{{ $json.pubDate }}\n{{ $json.author }}\n{{ $json.creator }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        864,
+        608
+      ],
+      "id": "fabf3a7e-22b3-4380-be1d-854db01113e7",
+      "name": "AI Agent3"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You curate my daily quantitative and trading intelligence feed.\n\nMy interests:\n- Quantitative trading\n- Market microstructure\n- Order flow\n- Limit order books\n- Price formation\n- Futures\n- NQ/ES\n- Options effects on underlying markets\n- Execution\n- Liquidity\n- Statistical arbitrage\n- Regime detection\n- Financial time series\n- Trading research methodology\n- Backtesting\n- Market anomalies\n- Systematic strategies\n- Discretionary market structure\n- Evidence that could generate testable trading hypotheses\n\nPrioritize material that:\n- Explains a market mechanism\n- Presents a testable hypothesis\n- Discusses market structure or order flow\n- Improves research/backtesting methodology\n- Introduces an interesting quantitative technique\n- Provides useful current market context\n\nDownrank:\n- Generic investing advice\n- Stock picks\n- Promotional strategy claims\n- \"Market will go up/down\" commentary without reasoning\n- Beginner personal-finance content\n\nDo not treat a claim as true merely because a source states it.\nDo not invent findings not present in the input.\n\nReturn ONLY valid JSON:\n\n{\n  \"category\": \"markets\",\n  \"stories\": [\n    {\n      \"title\": \"string\",\n      \"link\": \"string\",\n      \"published\": \"string\",\n      \"priority\": 1,\n      \"type\": \"quant OR discretionary OR market_structure\",\n      \"summary\": \"1-2 concise sentences\",\n      \"why_it_matters\": \"1 concise sentence\",\n      \"research_question\": \"A short testable question this item might inspire, or null\"\n    }\n  ]\n}\n\nRules:\n- Maximum 5 stories.\n- priority is integer 1-10.\n- Preserve links exactly.\n- Sort highest priority first.\n- Fewer than 5 is acceptable.\n- No markdown or text outside JSON.\n\nHere is the Data:\n{{ $json.title }}\n{{ $json.link }}\n{{ $json.pubDate }}\n{{ $json.author }}\n{{ $json.creator }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        928,
+        960
+      ],
+      "id": "e42a47bb-17ff-4aa0-a003-e0a36588b539",
+      "name": "AI Agent4"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5.6-luna",
+          "mode": "list",
+          "cachedResultName": "gpt-5.6-luna"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        864,
+        832
+      ],
+      "id": "cff23df8-8b53-455b-b480-09f0dbd7c608",
+      "name": "OpenAI Chat Model3",
+      "credentials": {
+        "openAiApi": {
+          "id": "1p9vxbLssc0AQGwt",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5.6-luna",
+          "mode": "list",
+          "cachedResultName": "gpt-5.6-luna"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        912,
+        1120
+      ],
+      "id": "199cb528-d4b7-4797-b15b-cea4de5f0961",
+      "name": "OpenAI Chat Model4",
+      "credentials": {
+        "openAiApi": {
+          "id": "1p9vxbLssc0AQGwt",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const inputItems = $input.all();\nconst output = [];\n\n// -----------------------------------\n// Helpers\n// -----------------------------------\n\nfunction cleanLink(link = \"\") {\n  if (!link) return \"\";\n\n  let value = String(link).trim();\n\n  // Markdown link:\n  // [https://example.com](https://example.com)\n  const markdownMatch = value.match(/\\[[^\\]]*\\]\\((https?:\\/\\/[^)]+)\\)/);\n\n  if (markdownMatch) {\n    return markdownMatch[1];\n  }\n\n  return value;\n}\n\nfunction parseAgentResponse(raw) {\n  // Already JSON\n  if (typeof raw === \"object\" && raw !== null) {\n    return raw;\n  }\n\n  let text = String(raw ?? \"\").trim();\n\n  // Remove Markdown fences\n  text = text\n    .replace(/^```json\\s*/i, \"\")\n    .replace(/^```\\s*/i, \"\")\n    .replace(/\\s*```$/, \"\")\n    .replace(/\\\\_/g, \"_\")\n    .trim();\n\n  let parsed;\n\n  try {\n    parsed = JSON.parse(text);\n\n    // Handle JSON encoded inside a JSON string\n    if (typeof parsed === \"string\") {\n      parsed = JSON.parse(parsed);\n    }\n  } catch (error) {\n    throw new Error(\n      `Could not parse agent response.\\n\\n${error.message}\\n\\nRaw:\\n${text}`\n    );\n  }\n\n  return parsed;\n}\n\nfunction pushStory(story, category, extra = {}) {\n  if (!story || !story.title) return;\n\n  output.push({\n    json: {\n      content_type: \"news\",\n\n      category,\n\n      title: story.title ?? \"\",\n      link: cleanLink(story.link),\n\n      published: story.published ?? \"\",\n\n      priority:\n        typeof story.priority === \"number\"\n          ? story.priority\n          : null,\n\n      area: story.area ?? \"\",\n      topic: story.topic ?? \"\",\n      type: story.type ?? \"\",\n\n      summary:\n        story.summary ??\n        story.why_read ??\n        story.reason ??\n        \"\",\n\n      why_it_matters:\n        story.why_it_matters ??\n        story.why_read ??\n        story.reason ??\n        \"\",\n\n      research_question:\n        story.research_question ?? null,\n\n      look_for:\n        Array.isArray(story.look_for)\n          ? story.look_for\n          : [],\n\n      best_first_read:\n        story.best_first_read === true,\n\n      ...extra\n    }\n  });\n}\n\n// -----------------------------------\n// Process every input item\n// -----------------------------------\n\nfor (const item of inputItems) {\n\n  const raw =\n    item.json.output ??\n    item.json.text ??\n    item.json.response ??\n    item.json.content ??\n    item.json.message ??\n    item.json;\n\n  const data = parseAgentResponse(raw);\n\n  // -----------------------------------\n  // Standard news-agent format\n  // -----------------------------------\n\n  if (Array.isArray(data.stories)) {\n\n    const category = data.category ?? \"unknown\";\n\n    for (const story of data.stories) {\n      pushStory(story, category);\n    }\n\n    continue;\n  }\n\n  // -----------------------------------\n  // Research-agent format\n  // -----------------------------------\n\n  const bestTitle =\n    data.best_first_read?.title ??\n    null;\n\n  for (const paper of data.core_reads ?? []) {\n\n    pushStory(\n      paper,\n      \"research\",\n      {\n        content_type: \"research\",\n        research_tier: \"core\",\n        best_first_read:\n          paper.title === bestTitle\n      }\n    );\n\n  }\n\n  for (const paper of data.stretch_reads ?? []) {\n\n    pushStory(\n      paper,\n      \"research\",\n      {\n        content_type: \"research\",\n        research_tier: \"stretch\",\n        best_first_read:\n          paper.title === bestTitle\n      }\n    );\n\n  }\n\n  for (const paper of data.watchlist ?? []) {\n\n    pushStory(\n      paper,\n      \"research\",\n      {\n        content_type: \"research\",\n        research_tier: \"watchlist\",\n        best_first_read:\n          paper.title === bestTitle\n      }\n    );\n\n  }\n}\n\n// Highest priority first\noutput.sort((a, b) => {\n  return (b.json.priority ?? 0) - (a.json.priority ?? 0);\n});\n\nreturn output;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1184,
+        80
+      ],
+      "id": "9e46e761-f47e-40fe-8cd8-44ccb132f1a2",
+      "name": "Code in JavaScript2"
+    },
+    {
+      "parameters": {
+        "jsCode": "const inputItems = $input.all();\nconst output = [];\n\n// -----------------------------------\n// Helpers\n// -----------------------------------\n\nfunction cleanLink(link = \"\") {\n  if (!link) return \"\";\n\n  let value = String(link).trim();\n\n  // Markdown link:\n  // [https://example.com](https://example.com)\n  const markdownMatch = value.match(/\\[[^\\]]*\\]\\((https?:\\/\\/[^)]+)\\)/);\n\n  if (markdownMatch) {\n    return markdownMatch[1];\n  }\n\n  return value;\n}\n\nfunction parseAgentResponse(raw) {\n  // Already JSON\n  if (typeof raw === \"object\" && raw !== null) {\n    return raw;\n  }\n\n  let text = String(raw ?? \"\").trim();\n\n  // Remove Markdown fences\n  text = text\n    .replace(/^```json\\s*/i, \"\")\n    .replace(/^```\\s*/i, \"\")\n    .replace(/\\s*```$/, \"\")\n    .replace(/\\\\_/g, \"_\")\n    .trim();\n\n  let parsed;\n\n  try {\n    parsed = JSON.parse(text);\n\n    // Handle JSON encoded inside a JSON string\n    if (typeof parsed === \"string\") {\n      parsed = JSON.parse(parsed);\n    }\n  } catch (error) {\n    throw new Error(\n      `Could not parse agent response.\\n\\n${error.message}\\n\\nRaw:\\n${text}`\n    );\n  }\n\n  return parsed;\n}\n\nfunction pushStory(story, category, extra = {}) {\n  if (!story || !story.title) return;\n\n  output.push({\n    json: {\n      content_type: \"news\",\n\n      category,\n\n      title: story.title ?? \"\",\n      link: cleanLink(story.link),\n\n      published: story.published ?? \"\",\n\n      priority:\n        typeof story.priority === \"number\"\n          ? story.priority\n          : null,\n\n      area: story.area ?? \"\",\n      topic: story.topic ?? \"\",\n      type: story.type ?? \"\",\n\n      summary:\n        story.summary ??\n        story.why_read ??\n        story.reason ??\n        \"\",\n\n      why_it_matters:\n        story.why_it_matters ??\n        story.why_read ??\n        story.reason ??\n        \"\",\n\n      research_question:\n        story.research_question ?? null,\n\n      look_for:\n        Array.isArray(story.look_for)\n          ? story.look_for\n          : [],\n\n      best_first_read:\n        story.best_first_read === true,\n\n      ...extra\n    }\n  });\n}\n\n// -----------------------------------\n// Process every input item\n// -----------------------------------\n\nfor (const item of inputItems) {\n\n  const raw =\n    item.json.output ??\n    item.json.text ??\n    item.json.response ??\n    item.json.content ??\n    item.json.message ??\n    item.json;\n\n  const data = parseAgentResponse(raw);\n\n  // -----------------------------------\n  // Standard news-agent format\n  // -----------------------------------\n\n  if (Array.isArray(data.stories)) {\n\n    const category = data.category ?? \"unknown\";\n\n    for (const story of data.stories) {\n      pushStory(story, category);\n    }\n\n    continue;\n  }\n\n  // -----------------------------------\n  // Research-agent format\n  // -----------------------------------\n\n  const bestTitle =\n    data.best_first_read?.title ??\n    null;\n\n  for (const paper of data.core_reads ?? []) {\n\n    pushStory(\n      paper,\n      \"research\",\n      {\n        content_type: \"research\",\n        research_tier: \"core\",\n        best_first_read:\n          paper.title === bestTitle\n      }\n    );\n\n  }\n\n  for (const paper of data.stretch_reads ?? []) {\n\n    pushStory(\n      paper,\n      \"research\",\n      {\n        content_type: \"research\",\n        research_tier: \"stretch\",\n        best_first_read:\n          paper.title === bestTitle\n      }\n    );\n\n  }\n\n  for (const paper of data.watchlist ?? []) {\n\n    pushStory(\n      paper,\n      \"research\",\n      {\n        content_type: \"research\",\n        research_tier: \"watchlist\",\n        best_first_read:\n          paper.title === bestTitle\n      }\n    );\n\n  }\n}\n\n// Highest priority first\noutput.sort((a, b) => {\n  return (b.json.priority ?? 0) - (a.json.priority ?? 0);\n});\n\nreturn output;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1216,
+        384
+      ],
+      "id": "94dbe642-7f1b-4fa5-b752-7874ace8bb4a",
+      "name": "Code in JavaScript3"
+    },
+    {
+      "parameters": {
+        "jsCode": "const inputItems = $input.all();\nconst output = [];\n\n// -----------------------------------\n// Helpers\n// -----------------------------------\n\nfunction cleanLink(link = \"\") {\n  if (!link) return \"\";\n\n  let value = String(link).trim();\n\n  // Markdown link:\n  // [https://example.com](https://example.com)\n  const markdownMatch = value.match(/\\[[^\\]]*\\]\\((https?:\\/\\/[^)]+)\\)/);\n\n  if (markdownMatch) {\n    return markdownMatch[1];\n  }\n\n  return value;\n}\n\nfunction parseAgentResponse(raw) {\n  // Already JSON\n  if (typeof raw === \"object\" && raw !== null) {\n    return raw;\n  }\n\n  let text = String(raw ?? \"\").trim();\n\n  // Remove Markdown fences\n  text = text\n    .replace(/^```json\\s*/i, \"\")\n    .replace(/^```\\s*/i, \"\")\n    .replace(/\\s*```$/, \"\")\n    .replace(/\\\\_/g, \"_\")\n    .trim();\n\n  let parsed;\n\n  try {\n    parsed = JSON.parse(text);\n\n    // Handle JSON encoded inside a JSON string\n    if (typeof parsed === \"string\") {\n      parsed = JSON.parse(parsed);\n    }\n  } catch (error) {\n    throw new Error(\n      `Could not parse agent response.\\n\\n${error.message}\\n\\nRaw:\\n${text}`\n    );\n  }\n\n  return parsed;\n}\n\nfunction pushStory(story, category, extra = {}) {\n  if (!story || !story.title) return;\n\n  output.push({\n    json: {\n      content_type: \"news\",\n\n      category,\n\n      title: story.title ?? \"\",\n      link: cleanLink(story.link),\n\n      published: story.published ?? \"\",\n\n      priority:\n        typeof story.priority === \"number\"\n          ? story.priority\n          : null,\n\n      area: story.area ?? \"\",\n      topic: story.topic ?? \"\",\n      type: story.type ?? \"\",\n\n      summary:\n        story.summary ??\n        story.why_read ??\n        story.reason ??\n        \"\",\n\n      why_it_matters:\n        story.why_it_matters ??\n        story.why_read ??\n        story.reason ??\n        \"\",\n\n      research_question:\n        story.research_question ?? null,\n\n      look_for:\n        Array.isArray(story.look_for)\n          ? story.look_for\n          : [],\n\n      best_first_read:\n        story.best_first_read === true,\n\n      ...extra\n    }\n  });\n}\n\n// -----------------------------------\n// Process every input item\n// -----------------------------------\n\nfor (const item of inputItems) {\n\n  const raw =\n    item.json.output ??\n    item.json.text ??\n    item.json.response ??\n    item.json.content ??\n    item.json.message ??\n    item.json;\n\n  const data = parseAgentResponse(raw);\n\n  // -----------------------------------\n  // Standard news-agent format\n  // -----------------------------------\n\n  if (Array.isArray(data.stories)) {\n\n    const category = data.category ?? \"unknown\";\n\n    for (const story of data.stories) {\n      pushStory(story, category);\n    }\n\n    continue;\n  }\n\n  // -----------------------------------\n  // Research-agent format\n  // -----------------------------------\n\n  const bestTitle =\n    data.best_first_read?.title ??\n    null;\n\n  for (const paper of data.core_reads ?? []) {\n\n    pushStory(\n      paper,\n      \"research\",\n      {\n        content_type: \"research\",\n        research_tier: \"core\",\n        best_first_read:\n          paper.title === bestTitle\n      }\n    );\n\n  }\n\n  for (const paper of data.stretch_reads ?? []) {\n\n    pushStory(\n      paper,\n      \"research\",\n      {\n        content_type: \"research\",\n        research_tier: \"stretch\",\n        best_first_read:\n          paper.title === bestTitle\n      }\n    );\n\n  }\n\n  for (const paper of data.watchlist ?? []) {\n\n    pushStory(\n      paper,\n      \"research\",\n      {\n        content_type: \"research\",\n        research_tier: \"watchlist\",\n        best_first_read:\n          paper.title === bestTitle\n      }\n    );\n\n  }\n}\n\n// Highest priority first\noutput.sort((a, b) => {\n  return (b.json.priority ?? 0) - (a.json.priority ?? 0);\n});\n\nreturn output;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1248,
+        656
+      ],
+      "id": "ef67d738-1264-4557-bb10-60877b6e551f",
+      "name": "Code in JavaScript4"
+    },
+    {
+      "parameters": {
+        "jsCode": "const inputItems = $input.all();\nconst output = [];\n\n// -----------------------------------\n// Helpers\n// -----------------------------------\n\nfunction cleanLink(link = \"\") {\n  if (!link) return \"\";\n\n  let value = String(link).trim();\n\n  // Markdown link:\n  // [https://example.com](https://example.com)\n  const markdownMatch = value.match(/\\[[^\\]]*\\]\\((https?:\\/\\/[^)]+)\\)/);\n\n  if (markdownMatch) {\n    return markdownMatch[1];\n  }\n\n  return value;\n}\n\nfunction parseAgentResponse(raw) {\n  // Already JSON\n  if (typeof raw === \"object\" && raw !== null) {\n    return raw;\n  }\n\n  let text = String(raw ?? \"\").trim();\n\n  // Remove Markdown fences\n  text = text\n    .replace(/^```json\\s*/i, \"\")\n    .replace(/^```\\s*/i, \"\")\n    .replace(/\\s*```$/, \"\")\n    .replace(/\\\\_/g, \"_\")\n    .trim();\n\n  let parsed;\n\n  try {\n    parsed = JSON.parse(text);\n\n    // Handle JSON encoded inside a JSON string\n    if (typeof parsed === \"string\") {\n      parsed = JSON.parse(parsed);\n    }\n  } catch (error) {\n    throw new Error(\n      `Could not parse agent response.\\n\\n${error.message}\\n\\nRaw:\\n${text}`\n    );\n  }\n\n  return parsed;\n}\n\nfunction pushStory(story, category, extra = {}) {\n  if (!story || !story.title) return;\n\n  output.push({\n    json: {\n      content_type: \"news\",\n\n      category,\n\n      title: story.title ?? \"\",\n      link: cleanLink(story.link),\n\n      published: story.published ?? \"\",\n\n      priority:\n        typeof story.priority === \"number\"\n          ? story.priority\n          : null,\n\n      area: story.area ?? \"\",\n      topic: story.topic ?? \"\",\n      type: story.type ?? \"\",\n\n      summary:\n        story.summary ??\n        story.why_read ??\n        story.reason ??\n        \"\",\n\n      why_it_matters:\n        story.why_it_matters ??\n        story.why_read ??\n        story.reason ??\n        \"\",\n\n      research_question:\n        story.research_question ?? null,\n\n      look_for:\n        Array.isArray(story.look_for)\n          ? story.look_for\n          : [],\n\n      best_first_read:\n        story.best_first_read === true,\n\n      ...extra\n    }\n  });\n}\n\n// -----------------------------------\n// Process every input item\n// -----------------------------------\n\nfor (const item of inputItems) {\n\n  const raw =\n    item.json.output ??\n    item.json.text ??\n    item.json.response ??\n    item.json.content ??\n    item.json.message ??\n    item.json;\n\n  const data = parseAgentResponse(raw);\n\n  // -----------------------------------\n  // Standard news-agent format\n  // -----------------------------------\n\n  if (Array.isArray(data.stories)) {\n\n    const category = data.category ?? \"unknown\";\n\n    for (const story of data.stories) {\n      pushStory(story, category);\n    }\n\n    continue;\n  }\n\n  // -----------------------------------\n  // Research-agent format\n  // -----------------------------------\n\n  const bestTitle =\n    data.best_first_read?.title ??\n    null;\n\n  for (const paper of data.core_reads ?? []) {\n\n    pushStory(\n      paper,\n      \"research\",\n      {\n        content_type: \"research\",\n        research_tier: \"core\",\n        best_first_read:\n          paper.title === bestTitle\n      }\n    );\n\n  }\n\n  for (const paper of data.stretch_reads ?? []) {\n\n    pushStory(\n      paper,\n      \"research\",\n      {\n        content_type: \"research\",\n        research_tier: \"stretch\",\n        best_first_read:\n          paper.title === bestTitle\n      }\n    );\n\n  }\n\n  for (const paper of data.watchlist ?? []) {\n\n    pushStory(\n      paper,\n      \"research\",\n      {\n        content_type: \"research\",\n        research_tier: \"watchlist\",\n        best_first_read:\n          paper.title === bestTitle\n      }\n    );\n\n  }\n}\n\n// Highest priority first\noutput.sort((a, b) => {\n  return (b.json.priority ?? 0) - (a.json.priority ?? 0);\n});\n\nreturn output;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1264,
+        928
+      ],
+      "id": "dc2e33da-2a5c-4469-bfe7-93fa1a6afaf6",
+      "name": "Code in JavaScript5"
+    },
+    {
+      "parameters": {
+        "numberInputs": 5
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1920,
+        320
+      ],
+      "id": "e0c90ab8-3ca4-41b5-98e0-b8dda14780a4",
+      "name": "Merge4"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 8,
+              "triggerAtMinute": 30
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -592,
+        128
+      ],
+      "id": "f731b15f-b14e-4dc5-bd0e-179be7c803cf",
+      "name": "Schedule Trigger"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Hugging Face Blog",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "GitHub Trending",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Open AI RSS",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Google Coding AI Reserch",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "AWS",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "PortSwigger Research",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Trail of Bits",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Alpha Architect",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Quantopidia",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "N8N Blog",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "ArXiv Feed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ArXiv Feed": {
+      "main": [
+        [
+          {
+            "node": "Aggregate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Merge4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hugging Face Blog": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Open AI RSS": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Google Coding AI Reserch": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "GitHub Trending": {
+      "main": [
+        [
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AWS": {
+      "main": [
+        [
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "PortSwigger Research": {
+      "main": [
+        [
+          {
+            "node": "Merge2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trail of Bits": {
+      "main": [
+        [
+          {
+            "node": "Merge2",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "N8N Blog": {
+      "main": [
+        [
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Alpha Architect": {
+      "main": [
+        [
+          {
+            "node": "Merge3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Quantopidia": {
+      "main": [
+        [
+          {
+            "node": "Merge3",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Aggregate1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge1": {
+      "main": [
+        [
+          {
+            "node": "Aggregate2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge2": {
+      "main": [
+        [
+          {
+            "node": "Aggregate3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge3": {
+      "main": [
+        [
+          {
+            "node": "Aggregate4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate1": {
+      "main": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate2": {
+      "main": [
+        [
+          {
+            "node": "AI Agent2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model2": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent2",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate3": {
+      "main": [
+        [
+          {
+            "node": "AI Agent3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate4": {
+      "main": [
+        [
+          {
+            "node": "AI Agent4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model3": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent3",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model4": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent4",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent2": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent3": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent4": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript2": {
+      "main": [
+        [
+          {
+            "node": "Merge4",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript3": {
+      "main": [
+        [
+          {
+            "node": "Merge4",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript4": {
+      "main": [
+        [
+          {
+            "node": "Merge4",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript5": {
+      "main": [
+        [
+          {
+            "node": "Merge4",
+            "type": "main",
+            "index": 4
+          }
+        ]
+      ]
+    },
+    "Merge4": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "ArXiv Feed",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Hugging Face Blog",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Open AI RSS",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Google Coding AI Reserch",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "GitHub Trending",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "AWS",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "N8N Blog",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "PortSwigger Research",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Trail of Bits",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Alpha Architect",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Quantopidia",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "timezone": "America/Chicago",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "versionId": "c774c6f5-b32c-4458-a458-1b3ec5ed0070",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "87e0ce283de1c611b379bb27fb5af4d8efe5dd6d7b9def4650dc734c29ef3988"
+  },
+  "nodeGroups": [],
+  "id": "iLLCV2g6qrReeidg",
+  "tags": []
+}
